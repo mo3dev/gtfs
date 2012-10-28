@@ -1,5 +1,5 @@
 # coding: utf-8
-#!/usr/bin/python
+#!/usr/bin/env python2.7
 # gtfs.py
 
 """GTFS Utility & CRUD functions pertaining to a google transit feed.
@@ -8,8 +8,8 @@ It can be used to create, update, remove to/from a sqlite3 datastore.
 
 from optparse import OptionParser
 
-# release version
-version = 0.1
+# code version
+_version = 0.1
 
 def create(**info):
     """Creates a new feed into the datastore."""
@@ -24,11 +24,11 @@ def remove(**info):
     print("removing")
 
 def main():
-    """Entrypoint of the gtfs script."""
+    """Entrypoint of the gtfs script (through the command-line)"""
     
-    # Use python's OptionParser class to handle command line arguments
+    # Use python's OptionParser class to handle command-line arguments
     usage = "usage: %prog [options] *arguments"
-    parser = OptionParser(usage=usage, version="%prog " + str(version))
+    parser = OptionParser(usage=usage, version="%prog " + str(_version))
     
     # add the create option
     # usage: "python gtfs.py -c canada_hamilton_hsr http://file.zip Canada Hamilton HSR America/Toronto"
@@ -53,3 +53,5 @@ def main():
 if __name__ == '__main__':
     # run main()
     main()
+else:
+    print("gtfs module is loaded.")
