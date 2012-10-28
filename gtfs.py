@@ -6,10 +6,9 @@
 It can be used to create, update, remove to/from a sqlite3 datastore.
 """
 
+import config
+from datastore import Management, Feeds
 from optparse import OptionParser
-
-# code version
-_version = 0.1
 
 
 def create(feed_name, feed_url, feed_country, feed_city, feed_agency, feed_timezone):
@@ -19,6 +18,12 @@ def create(feed_name, feed_url, feed_country, feed_city, feed_agency, feed_timez
                         feed_timezone="America/Toronto" )
     """
     print("creating " + feed_name)
+    management = Management()
+    management.create_tables()
+    
+    feeds = Feeds()
+    feeds.create_tables()
+    
 
 def update(feed_name):
     """Updates a current specific feed in the datastore.
@@ -38,7 +43,7 @@ def main():
     
     # Use python's OptionParser class to handle command-line arguments
     usage = "usage: %prog [options] *arguments"
-    parser = OptionParser(usage=usage, version="%prog " + str(_version))
+    parser = OptionParser(usage=usage, version="%prog " + str(config.VERSION))
     
     # add the create option
     # usage: "python gtfs.py -c canada_hamilton_hsr http://file.zip Canada Hamilton HSR America/Toronto"
