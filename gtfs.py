@@ -12,6 +12,7 @@ import time
 import os
 import zipfile
 import csv
+import shutil
 from datastore import Management, Feeds
 from optparse import OptionParser
 
@@ -28,29 +29,26 @@ class GTFS():
         self.conn_feeds = self.feeds.get_connection()
         
         # grab table objects (management)
-        self.feed_table     = self.management.get_feed_table()
-        self.dataset_table  = self.management.get_dataset_table()
-        # grab table objects (feeds)
-        self.agency_table           = self.feeds.get_agency_table()
-        self.stops_table            = self.feeds.get_stops_table()
-        self.routes_table           = self.feeds.get_routes_table()
-        self.trips_table            = self.feeds.get_trips_table()
-        self.stop_times_table       = self.feeds.get_stop_times_table()
-        self.calendar_table         = self.feeds.get_calendar_table()
-        self.calendar_dates_table   = self.feeds.get_calendar_dates_table()
-        self.fare_attributes_table  = self.feeds.get_fare_attributes_table()
-        self.fare_rules_table       = self.feeds.get_fare_rules_table()
-        self.shapes_table           = self.feeds.get_shapes_table()
-        self.frequencies_table      = self.feeds.get_frequencies_table()
-        self.transfers_table        = self.feeds.get_transfers_table()
-        self.feed_info_table        = self.feeds.get_feed_info_table()
+        self.tables_map = {
+            'feed':             self.management.get_feed_table(),
+            'dataset':          self.management.get_dataset_table(),
+            # grab table objects (feeds) into a tables_map dictionary, in which 
+            # its keys will be used (tables_map.keys()) as a list of expected tables
+            'agency':           self.feeds.get_agency_table(),
+            'stops':            self.feeds.get_stops_table(),
+            'routes':           self.feeds.get_routes_table(),
+            'trips':            self.feeds.get_trips_table(),
+            'stop_times':       self.feeds.get_stop_times_table(),
+            'calendar':         self.feeds.get_calendar_table(),
+            'calendar_dates':   self.feeds.get_calendar_dates_table(),
+            'fare_attributes':  self.feeds.get_fare_attributes_table(),
+            'fare_rules':       self.feeds.get_fare_rules_table(),
+            'shapes':           self.feeds.get_shapes_table(),
+            'frequencies':      self.feeds.get_frequencies_table(),
+            'transfers':        self.feeds.get_transfers_table(),
+            'feed_info':        self.feeds.get_feed_info_table(),
+        }
         
-        # list of expected tables
-        self.gtfs_tables = [
-            'agency', 'stops', 'routes', 'trips', 'stop_times', 'calendar',
-            'calendar_dates', 'fare_attributes', 'fare_rules', 'shapes',
-            'frequencies', 'transfers', 'feed_info'
-        ]
         # list of column names per table
         self.gtfs_columns = {
             'agency': ['agency_id', 'agency_name', 'agency_url', 'agency_timezone', 'agency_lang', 'agency_phone', 'agency_fare_url'],
@@ -75,7 +73,6 @@ class GTFS():
                             feed_country="Canada", feed_city="Hamilton", feed_agency="HSR",
                             feed_timezone="America/Toronto" )
         """
-        print("creating " + feed_name)
         
         # exception handling for errors
         result = None
@@ -94,12 +91,13 @@ class GTFS():
             self._validate_feed_url(feed_url)
             
             # register the new feed with the management database
-            self.conn_mngmt.execute(self.feed_table.insert(), [
+            self.conn_mngmt.execute(self.tables_map['feed'].insert(), [
                 {"feed_name": self.feed_name, "feed_url": self.feed_url, "feed_country": self.feed_country, "feed_city": self.feed_city, "feed_agency": self.feed_agency, "feed_timezone": self.feed_timezone}
             ])
             
             # create the dataset
             self._create_dateset()
+            print('success')
             
         except GTFSError, err:
             result = err # GTFS custom exceptions only contain a string
@@ -123,6 +121,9 @@ class GTFS():
         # register dataset and link it to its corresponding feed
         self._register_dataset()
         
+        # clean up mess (temp files, database tables verification records, etc..)
+        self._cleanup()
+        
     def _download_file(self):
         # downloads the zip file into the 'tmp' directory in the current directory
         root_dir = os.path.dirname(os.path.realpath(__file__))
@@ -132,25 +133,24 @@ class GTFS():
             os.makedirs(self.tmp_dir)
         # create the path to the dataset directory and also create the path to the zip file to be downloaded (zip file's name will be the same as the dataset_id)
         self.dataset_dir = os.path.join(self.tmp_dir, self.dataset_id)
-        self.target_file = os.path.join(self.dataset_dir + '.zip') # filename = dirname+'.zip'
+        self.dataset_zipfile = os.path.join(self.dataset_dir + '.zip') # filename = dirname+'.zip'
         
-        # process the zip file download http request, then write the file locally with the name self.target_file
+        # process the zip file download http request, then write the file locally with the name self.dataset_zipfile
         request = urllib2.urlopen(self.feed_url)
-        with open(self.target_file, 'wb') as fp:
+        with open(self.dataset_zipfile, 'wb') as fp:
             while 1:
                 packet = request.read()
                 if not packet:
                     break
                 fp.write(packet)
-        self.date_last_modified =  request.info()['Last-Modified']
+        self.last_modified =  request.info()['Last-Modified']
         request.close()
-        print('downloaded')
         
     def _unzip_file(self):
         # method unzips the downloaed file into self.dataset_dir
         os.mkdir(self.dataset_dir, 0777)
         # unzip the files into the newly created dir
-        zip = zipfile.ZipFile(self.target_file)
+        zip = zipfile.ZipFile(self.dataset_zipfile)
         for name in zip.namelist():
             # if name is a directory, create it
             if name.endswith('/'):
@@ -160,45 +160,76 @@ class GTFS():
                 handle = open(os.path.join(self.dataset_dir, name.lower()), 'wb')
                 handle.write(zip.read(name.lower()))
                 handle.close()
-        print('unzipped')
         
     def _populate_feeds(self):
         # read files and populate the feeds database
         # make sure the file exists, before populating.
-        for table in self.gtfs_tables:
+        for table in self.tables_map.keys():
             file_path = os.path.join(self.dataset_dir, table + '.txt')
+            # the file exists, read and populate
             if os.path.exists(file_path):
-                # the file exists, read and populate
-                handle = open(file_path, 'r')
-                # loop through the file (efficiently)
-                header = False
-                for line in handle:
-                    # first line is header (columns)
-                    if not header:
-                        print line, # header
-                        header = True # deactivate the flag
-                    else:
-                        # rows (values)
-                        print line, # value
-                    
-                handle.close()
-                print('\n' + table + '.txt read')
-                print('')
+                self.headers = None
+                self.bulk_insert = []
+                self.exclusions = []
+                with open(file_path, 'rb') as handle:
+                    reader = csv.reader(handle)
+                    for row in reader:
+                        # determine which header columns should be removed (extra, not in gtfs)
+                        if not self.headers:
+                            self.headers = row
+                        else:
+                            # add a dict element made from row into self.bulk_insert list, which will be shoved into sqlalchemy's insert block
+                            self._add_to_bulk_insert(row, table)
+                # send to datastore
+                self._send_to_datastore(table)
             else:
                 # the file does NOT exist, continue
                 continue
-            
-        print('populate_feeds')
+        
+    def _add_to_bulk_insert(self, row_list, table_name):
+        # creates a new dict element out of self.headers, self.exclusions, and row_list, then adds it to self.bulk_insert
+        # It also removes columns (and all their associated values) from the file that are not part of the gtfs feed (extra columns)
+        # It also sets None values in-place of missing values in rows (even if their corresponding columns are present)
+        row_dict = {}
+        column_index = 0
+        # only insert the columns that we have in the files, others will default to null in the datastore
+        for column in self.headers:
+            # if this column is an extra/excess (not defined in gtfs feed), skip it, BUT the column_index MUST be incremented either way
+            if column in self.gtfs_columns[table_name]:
+                # exception handling for when we try to access a list's index that doesn't exist (missing values when columns are present)
+                # if an exception is raised, then the value for the corresponding column is missing, set it to None (null) for the datastore's insert stmt
+                try:
+                    # don't insert empty string, convert them to None (null in datastore)
+                    if row_list[column_index]:
+                        row_dict[column] = row_list[column_index]
+                    else:
+                        row_dict[column] = None
+                except IndexError, e:
+                    row_dict[column] = None
+            # increment the column index either way
+            column_index = column_index + 1
+            # add the dataset_id column if row_dict has any values
+            if row_dict:
+                row_dict['dataset_id'] = self.dataset_id
+        # add the clean row's dictionary to the list to insert
+        self.bulk_insert.append(row_dict)
+        
+    def _send_to_datastore(self, table_name):
+        # if bulk_insert dict contains values, then insert them
+        if self.bulk_insert:
+            self.conn_feeds.execute(self.tables_map[table_name].insert(), self.bulk_insert)
         
     def _register_dataset(self):
-        # register the dataset in the management database (dataset table)
-        print('register_dataset')
-        # clean up mess (temp files, database tables verification records, etc..)
-        self._cleanup()
+        # register the dataset in the management database (dataset table), registration = mission accomplished
+        self.conn_mngmt.execute(self.tables_map['dataset'].insert(), [
+            {"dataset_id": self.dataset_id, "feed_name": self.feed_name, "last_modified": self.last_modified}
+        ])
         
     def _cleanup(self):
-        #
-        print('cleanup')
+        # clean up mess (temp files, database tables verification records, etc..)
+        # for now, remove dataset's temp files (zipfile, dataset directory - including the extracted files within)
+        shutil.rmtree(self.dataset_dir)
+        os.remove(self.dataset_zipfile)
         
     def _validate_feed_url(self, feed_url):
         # make sure the feed url is valid
@@ -213,12 +244,11 @@ class GTFS():
         """Updates a current specific feed in the datastore.
         Usage: object.update( feed_name="canada_hamilton_hsr" )
         """
-        print('updating ' + feed_name)
         
         # exception handling for errors
         result = None
         try:
-            print('hi')
+            print('update - coming soon')
             
         except GTFSError, err:
             result = err # GTFS custom exceptions only contain a string
@@ -232,12 +262,11 @@ class GTFS():
         """Removes a current specific feed from the datastore.
         Usage: object.remove( feed_name="canada_hamilton_hsr" )
         """
-        print('removing ' + feed_name)
         
         # exception handling for errors
         result = None
         try:
-            print('hi')
+            print('remove - coming soon')
             
         except GTFSError, err:
             result = err # GTFS custom exceptions only contain a string
