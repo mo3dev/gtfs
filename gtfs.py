@@ -281,11 +281,11 @@ def main():
     """Entrypoint of the gtfs script (through the command-line)"""
     
     # Use python's OptionParser class to handle command-line arguments
-    usage = "usage: %prog [options] *arguments"
+    usage = "\n\npython gtfs.py -c feed_name http://feed_url.zip country city agency timezone \npython gtfs.py -u feed_name \npython gtfs.py -r feed_name"
     parser = OptionParser(usage=usage, version="%prog " + str(config.VERSION))
     
     # add the create option
-    # usage: "python gtfs.py -c canada_hamilton_hsr http://file.zip Canada Hamilton HSR America/Toronto"
+    # usage: "python gtfs.py -c canada_hamilton_hsr http://googlehsrdocs.hamilton.ca Canada Hamilton HSR America/Toronto"
     parser.add_option("-c", dest="feed_name_to_create", action="store",
                       help="create a new feed into the datastore")
     # add the update option
