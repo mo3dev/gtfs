@@ -4,6 +4,7 @@
 
 
 import config
+import datetime
 from sqlalchemy import *
 
 
@@ -44,7 +45,8 @@ class Management:
             Column('feed_country', String),
             Column('feed_city', String),
             Column('feed_agency', String),
-            Column('feed_timezone', String)
+            Column('feed_timezone', String),
+            Column('date_added', DateTime(), default=datetime.datetime.now)
         )
     
     def _dataset(self):
@@ -52,9 +54,8 @@ class Management:
         self.dataset_table = Table('dataset', self.metadata,
             Column('dataset_id', String, primary_key=True),
             Column('feed_name', String, ForeignKey("feed.feed_name")),
-            Column('date_added', DateTime()),
             Column('last_modified', String),
-            Column('dataset_created', Integer, default=0)
+            Column('date_added', DateTime(), default=datetime.datetime.now)
         )
 
 

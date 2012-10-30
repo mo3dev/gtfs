@@ -1,5 +1,6 @@
 .DS_Store
 config.pyc
 datastore.pyc
-feeds
-management
+feeds.sqlite
+management.sqlite
+tmp/

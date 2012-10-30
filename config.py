@@ -14,11 +14,11 @@ Possible values:
 
 """
 SQLALCHEMY_ENGINE = "sqlite:///"
-SQLALCHEMY_LOGGING = True
+SQLALCHEMY_LOGGING = False
 
 # database names
-MANAGEMENT_DB = "management"
-FEEDS_DB = "feeds"
+MANAGEMENT_DB = "management.sqlite"
+FEEDS_DB = "feeds.sqlite"
 
 # code version
 VERSION = 0.1
