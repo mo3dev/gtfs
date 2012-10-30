@@ -281,7 +281,7 @@ def main():
     """Entrypoint of the gtfs script (through the command-line)"""
     
     # Use python's OptionParser class to handle command-line arguments
-    usage = "\n\npython gtfs.py -c feed_name http://feed_url.zip country city agency timezone \npython gtfs.py -u feed_name \npython gtfs.py -r feed_name"
+    usage = "\n\n" . "python gtfs.py -c feed_name http://feed_url.zip country city agency timezone"."\n" . "python gtfs.py -u feed_name"."\n" . "python gtfs.py -r feed_name"
     parser = OptionParser(usage=usage, version="%prog " + str(config.VERSION))
     
     # add the create option
