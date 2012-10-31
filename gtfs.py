@@ -87,6 +87,12 @@ class GTFS():
             # create the unique dataset_id from the feed_name and current system's timestamp
             self.dataset_id = self.feed_name + "_" + str( int(time.time()) )
             
+            # validate the uniqueness of feed_name, needs to be done before a feed is registered..
+            feed_record = self._find_feed_record(feed_name)
+            if feed_record:
+                # the feed exists, return an error to the caller (raise GTFSError exception)
+                raise GTFSError("Feed: " + feed_name + " already exists. Retry with a UNIQUE feed name OR use the -u option on " + feed_name + " to update it.")
+            
             # validate url, needs to be done before a feed is registered..
             self._validate_feed_url(feed_url)
             
@@ -97,7 +103,7 @@ class GTFS():
             
             # create the dataset
             self._create_dateset()
-            print('success')
+            print('created')
             
         except GTFSError, err:
             result = err # GTFS custom exceptions only contain a string
@@ -231,6 +237,20 @@ class GTFS():
         shutil.rmtree(self.dataset_dir)
         os.remove(self.dataset_zipfile)
         
+    def _find_feed_record(self, feed_name):
+        # return the feed record that has feed_name = feed_name
+        # select from management.feed where feed_name = feed_name
+        query = self.tables_map['feed'].select()
+        # add a where predicate
+        query = query.where(
+            self.tables_map['feed'].c.feed_name == feed_name
+        )
+        # get the result set
+        result = self.conn_mngmt.execute(query).fetchone()
+        
+        # simply return the record (code re-use create and update methods :)
+        return result
+        
     def _validate_feed_url(self, feed_url):
         # make sure the feed url is valid
         try:
@@ -248,7 +268,32 @@ class GTFS():
         # exception handling for errors
         result = None
         try:
-            print('update - coming soon')
+            # create dataset properties
+            self.feed_name = feed_name.lower()
+            # create the unique dataset_id from the feed_name and current system's timestamp
+            self.dataset_id = self.feed_name + "_" + str( int(time.time()) )
+            
+            # find the record with feed_name = feed_name
+            feed_record = self._find_feed_record(feed_name)
+            if feed_record:
+                # an elegant way to create a dict out of a result set list while not hardcoding column names (for future)
+                column_list = [col.name for col in self.tables_map['feed'].columns]
+                row_dict = dict(zip(column_list, feed_record))
+                # set the dataset properties
+                self.feed_url = row_dict['feed_url']
+                self.feed_country = row_dict['feed_country']
+                self.feed_city = row_dict['feed_city']
+                self.feed_agency = row_dict['feed_agency']
+                self.feed_timezone = row_dict['feed_timezone']
+            else:
+                # record does not exist, how can I update something that doesn't exist?? PUNISH THE USER!!!
+                raise GTFSError("Feed: " + feed_name + " does not exist. Are you trolling?")
+            
+            # create the dataset
+            self._create_dateset()
+            
+            # TODO: remove older datasets..
+            print('updated')
             
         except GTFSError, err:
             result = err # GTFS custom exceptions only contain a string
